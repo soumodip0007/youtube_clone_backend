@@ -4,6 +4,14 @@ import { User } from "../models/user.model.js"
 import { uplodaOnCloudinary } from '../utils/cloudinary.js'
 import { ApiResponse } from '../utils/ApiResponse.js'
 
+const generateAccessAndRefreshTokens = async(userId) {
+    try {
+
+    } catch(error) {
+        throw new ApiError(500, "Something went wrong while generating access and refresh token!")
+    }
+}
+
 const registerUser = asyncHandler(async (req, res) => {
     // get user details from frontend
     const {fullName, email, username, password} = req.body
@@ -66,4 +74,36 @@ const registerUser = asyncHandler(async (req, res) => {
     )
 })
 
-export { registerUser }
+const loginUser = asyncHandler(async (req, res) => {
+    // req body -> data
+    const { email, username, password } = req.body
+
+    // username or email
+    if(!username || !email) {
+        throw new ApiError(400, "username or email is required!")
+    }
+
+    // find the user
+    const user = await User.findOne({
+        $or: [{username}, {email}]
+    })
+
+    if(!user) {
+        throw new ApiError(404, "User does not exist!")
+    }
+
+    // password check - we will find user object because it has the details of our self. Not the mongodb's User's object
+    const isPasswordValid = await user.isPasswordCorrect(password)
+
+    if(!isPasswordValid) {
+        throw new ApiError(401, "Invalid user credentials")
+    }
+
+    // access and refresh token
+
+
+    // send cookie for sending the refresh and access token
+
+})
+
+export { registerUser, loginUser }

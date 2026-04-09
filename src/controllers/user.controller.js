@@ -1,8 +1,8 @@
-import { asyncHandler } from '../utils/asyncHandler.js'
-import { ApiError } from '../utils/ApiError.js'
-import { User } from "../models/user.model.js"
-import { uplodaOnCloudinary } from '../utils/cloudinary.js'
-import { ApiResponse } from '../utils/ApiResponse.js'
+import { asyncHandler } from "../utils/asyncHandler.js";
+import { ApiError } from "../utils/ApiError.js";
+import { User } from "../models/user.model.js";
+import { uplodaOnCloudinary } from "../utils/cloudinary.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
 
 const registerUser = asyncHandler(async (req, res) => {
   // get user details from frontend
@@ -19,30 +19,30 @@ const registerUser = asyncHandler(async (req, res) => {
   const existedUser = await User.findOne({
     $or: [{ username }, { email }],
   });
-  console.log(req.files)
-//     [{
-//       fieldname: "avatar",
-//       originalname: "student.png",
-//       encoding: "7bit",
-//       mimetype: "image/png",
-//       destination: "./public/temp",
-//       filename: "student.png",
-//       path: "public\\temp\\student.png",
-//       size: 5049,
-//     }
-//   ],
-//     [
-//       {
-//         fieldname: "coverImage",
-//         originalname: "aiCloudConceptWithRobotArms.png",
-//         encoding: "7bit",
-//         mimetype: "image/png",
-//         destination: "./public/temp",
-//         filename: "aiCloudConceptWithRobotArms.png",
-//         path: "public\\temp\\aiCloudConceptWithRobotArms.png",
-//         size: 107905,
-//       },
-//     ]);
+  console.log(req.files);
+  //     [{
+  //       fieldname: "avatar",
+  //       originalname: "student.png",
+  //       encoding: "7bit",
+  //       mimetype: "image/png",
+  //       destination: "./public/temp",
+  //       filename: "student.png",
+  //       path: "public\\temp\\student.png",
+  //       size: 5049,
+  //     }
+  //   ],
+  //     [
+  //       {
+  //         fieldname: "coverImage",
+  //         originalname: "aiCloudConceptWithRobotArms.png",
+  //         encoding: "7bit",
+  //         mimetype: "image/png",
+  //         destination: "./public/temp",
+  //         filename: "aiCloudConceptWithRobotArms.png",
+  //         path: "public\\temp\\aiCloudConceptWithRobotArms.png",
+  //         size: 107905,
+  //       },
+  //     ]);
 
   if (existedUser) {
     throw new ApiError(409, "User with email or username already exists");
@@ -53,8 +53,12 @@ const registerUser = asyncHandler(async (req, res) => {
   // const coverImageLocalPath = req.files?.coverImage[0]?.path;
 
   let coverImageLocalPath;
-  if(req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length > 0) {
-    coverImageLocalPath = req.files.coverImage[0].path
+  if (
+    req.files &&
+    Array.isArray(req.files.coverImage) &&
+    req.files.coverImage.length > 0
+  ) {
+    coverImageLocalPath = req.files.coverImage[0].path;
   }
 
   if (!avatarLocalPath) {
@@ -95,4 +99,34 @@ const registerUser = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, createdUser, "User registered successfully"));
 });
 
-export { registerUser }
+const loginUser = asyncHandler(async (req, res) => {
+  // req body -> data
+  const { email, username, password } = req.body;
+
+  // user or email
+  if(!username || !email) {
+    throw new ApiError(400, "username or password is required!")
+  }
+
+  // find the user
+  const user = await User.findOne({
+    $or: [{username} , {email}]
+  })
+
+  if(!user) {
+    throw new ApiError(404, "User does not exist!")
+  }
+
+  // password check 
+  // we will not use User, because it is mongoDB's object but our user object is user.
+  const isPasswordValid = await user.isPasswordCorrect(password)
+
+  if(!isPasswordValid) {
+    throw new ApiError(401, "User does not exist!")
+  }
+
+  // access and refresh token
+  // send cookie
+});
+
+export { registerUser, loginUser };

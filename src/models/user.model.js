@@ -18,7 +18,7 @@ const userSchema = new Schema({
         lowercase: true,
         trim: true
     },
-    fullname: {
+    fullName: {
         type: String,
         required: true,
         trim: true,
@@ -46,11 +46,18 @@ const userSchema = new Schema({
     }
 }, { timestamps: true })
 
-userSchema.pre("save", function(next) {
-    if(!this.isModified("password")) return next();
-    this.password = bcrypt.hash(this.password, 10)
-    next()
-})
+// we can use next() with async in older mongoose version, ex - 8.0.0
+// userSchema.pre("save", async function (next) {
+//     if(!this.isModified("password")) return next();
+//     this.password = await bcrypt.hash(this.password, 10)
+//     next()
+// })
+
+// Now we cannot use aysnc with next()
+userSchema.pre("save", async function () {
+    if (!this.isModified("password")) return;
+    this.password = await bcrypt.hash(this.password, 10);
+});
 
 userSchema.methods.isPasswordCorrect = async function(password) {
     return await bcrypt.compare(password, this.password)

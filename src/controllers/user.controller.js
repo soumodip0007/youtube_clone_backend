@@ -4,6 +4,22 @@ import { User } from "../models/user.model.js";
 import { uplodaOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 
+const generateAccessAndRefreshToken = async (userId) => {
+  try {
+    const user = User.findById(userId)
+    const accessToken = user.generateAcceessToken()
+    const refreshToken = user.generateRefreshToken()
+
+    user.refreshToken = refreshToken
+    await user.save({ validateBeforeSave: false })
+
+    return { accessToken, refreshToken }
+
+  } catch (error) {
+    throw new ApiError(500, "Something went wrong while generating refresh and access token")
+  }
+}
+
 const registerUser = asyncHandler(async (req, res) => {
   // get user details from frontend
   const { fullName, email, username, password } = req.body;
@@ -104,16 +120,16 @@ const loginUser = asyncHandler(async (req, res) => {
   const { email, username, password } = req.body;
 
   // user or email
-  if(!username || !email) {
+  if (!username || !email) {
     throw new ApiError(400, "username or password is required!")
   }
 
   // find the user
   const user = await User.findOne({
-    $or: [{username} , {email}]
+    $or: [{ username }, { email }]
   })
 
-  if(!user) {
+  if (!user) {
     throw new ApiError(404, "User does not exist!")
   }
 
@@ -121,12 +137,39 @@ const loginUser = asyncHandler(async (req, res) => {
   // we will not use User, because it is mongoDB's object but our user object is user.
   const isPasswordValid = await user.isPasswordCorrect(password)
 
-  if(!isPasswordValid) {
-    throw new ApiError(401, "User does not exist!")
+  if (!isPasswordValid) {
+    throw new ApiError(401, "Invalid user credentials!")
   }
 
   // access and refresh token
+  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(user._id)
+
   // send cookie
+  const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
+
+  const options = {
+    httpOnly: true,
+    secure: true
+    // those cookie now only modifiable by server
+  }
+
+  return res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json(
+      new ApiResponse(
+        200, {
+        user: loggedInUser, accessToken, refreshToken
+        // we are giving the option to user, it can store refresh and access token by it self. Ex - localStorage
+      },
+        "User logged in succeessfully!"
+      )
+    )
 });
+
+const logoutUser = asyncHandler(async (req, res) => {
+  
+})
 
 export { registerUser, loginUser };

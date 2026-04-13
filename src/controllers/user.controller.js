@@ -3,22 +3,25 @@ import { ApiError } from "../utils/ApiError.js";
 import { User } from "../models/user.model.js";
 import { uplodaOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import jwt from "jsonwebtoken";
 
 const generateAccessAndRefreshToken = async (userId) => {
   try {
-    const user = User.findById(userId)
-    const accessToken = user.generateAcceessToken()
-    const refreshToken = user.generateRefreshToken()
+    const user = await User.findById(userId);
+    const accessToken = user.generateAccessToken();
+    const refreshToken = user.generateRefreshToken();
 
-    user.refreshToken = refreshToken
-    await user.save({ validateBeforeSave: false })
+    user.refreshToken = refreshToken;
+    await user.save({ validateBeforeSave: false });
 
-    return { accessToken, refreshToken }
-
+    return { accessToken, refreshToken };
   } catch (error) {
-    throw new ApiError(500, "Something went wrong while generating refresh and access token")
+    throw new ApiError(
+      500,
+      "Something went wrong while generating refresh and access token"
+    );
   }
-}
+};
 
 const registerUser = asyncHandler(async (req, res) => {
   // get user details from frontend
@@ -119,39 +122,47 @@ const loginUser = asyncHandler(async (req, res) => {
   // req body -> data
   const { email, username, password } = req.body;
 
-  // user or email
-  if (!username || !email) {
-    throw new ApiError(400, "username or password is required!")
+  // username or email
+  if (!username && !email) {
+    throw new ApiError(400, "username or password is required!");
   }
+
+  // if (!(username || email)) {
+  //   throw new ApiError(400, "username or password is required!");
+  // }
 
   // find the user
   const user = await User.findOne({
-    $or: [{ username }, { email }]
-  })
+    $or: [{ username }, { email }],
+  });
 
   if (!user) {
-    throw new ApiError(404, "User does not exist!")
+    throw new ApiError(404, "User does not exist!");
   }
 
-  // password check 
+  // password check
   // we will not use User, because it is mongoDB's object but our user object is user.
-  const isPasswordValid = await user.isPasswordCorrect(password)
+  const isPasswordValid = await user.isPasswordCorrect(password);
 
   if (!isPasswordValid) {
-    throw new ApiError(401, "Invalid user credentials!")
+    throw new ApiError(401, "Invalid user credentials!");
   }
 
   // access and refresh token
-  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(user._id)
+  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
+    user._id
+  );
 
   // send cookie
-  const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
+  const loggedInUser = await User.findById(user._id).select(
+    "-password -refreshToken"
+  );
 
   const options = {
     httpOnly: true,
-    secure: true
-    // those cookie now only modifiable by server
-  }
+    secure: true,
+    // those cookie now only modifiable by server we cannot modify it from frontend
+  };
 
   return res
     .status(200)
@@ -159,17 +170,99 @@ const loginUser = asyncHandler(async (req, res) => {
     .cookie("refreshToken", refreshToken, options)
     .json(
       new ApiResponse(
-        200, {
-        user: loggedInUser, accessToken, refreshToken
-        // we are giving the option to user, it can store refresh and access token by it self. Ex - localStorage
-      },
-        "User logged in succeessfully!"
+        200,
+        {
+          user: loggedInUser,
+          accessToken,
+          refreshToken,
+          // we are giving the option to user, it can store refresh and access token by it self. Ex - localStorage
+        },
+        "User logged in successfully!"
       )
-    )
+    );
 });
 
 const logoutUser = asyncHandler(async (req, res) => {
-  
-})
+  await User.findByIdAndUpdate(
+    req.user._id,
+    {
+      $set: {
+        refreshToken: undefined,
+      },
+    },
+    // for this in the return response we will get new updated value
+    {
+      new: true,
+    }
+  );
 
-export { registerUser, loginUser };
+  const options = {
+    httpOnly: true,
+    secure: true,
+  };
+
+  return res
+    .status(200)
+    .clearCookie("accessToken", options)
+    .clearCookie("refreshToken", options)
+    .json(new ApiResponse(200, {}, "User logged Out!"));
+});
+
+const refreshAccessToken = asyncHandler(async (req, res) => {
+  // Get refresh token from cookies or request body
+  const incomingRefreshToken =
+    req.cookies.refreshToken || req.body.refreshToken;
+
+  // If no token is provided then throw unauthorized
+  if (!incomingRefreshToken) {
+    throw new ApiError(401, "Unauthorized request!");
+  }
+
+  try {
+    // Verify the refresh token using JWT secret
+    const decodedToken = jwt.verify(
+      incomingRefreshToken,
+      process.env.REFRESH_TOKEN_SECRET
+    );
+
+    // Find user using ID stored inside token
+    const user = await User.findById(decodedToken?._id);
+
+    // If user does not exist throw invalid token
+    if (!user) {
+      throw new ApiError(401, "Invalid refresh token!");
+    }
+
+    // Check if token matches the one stored in DB
+    // Prevents reuse or token theft
+    if (incomingRefreshToken !== user?.refreshToken) {
+      throw new ApiError(401, "Refresh token is expired or used!");
+    }
+
+    const options = {
+      httpOnly: true, // prevents access via JS (XSS protection)
+      secure: true, // only sent over HTTPS
+    };
+
+    // Generate new access and refresh tokens
+    const { accessToken, newRefreshToken } =
+      await generateAccessAndRefreshToken(user._id);
+
+    // Send new tokens in cookies with response
+    return res
+      .status(200)
+      .cookie("accessToken", accessToken, options)
+      .cookie("refreshToken", newRefreshToken, options)
+      .json(
+        new ApiResponse(
+          200,
+          { accessToken, refreshToken: newRefreshToken },
+          "Access token refreshed!"
+        )
+      );
+  } catch (error) {
+    throw new ApiError(401, error?.message || "Invalid refresh token!");
+  }
+});
+
+export { registerUser, loginUser, logoutUser, refreshAccessToken };

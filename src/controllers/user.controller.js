@@ -287,11 +287,7 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
 const getCurrentUser = asyncHandler(async (req, res) => {
   return res
     .status(200)
-    .json(new ApiResponse(
-      200,
-      req.user,
-      "current user fetched successfully!"
-    ));
+    .json(new ApiResponse(200, req.user, "current user fetched successfully!"));
 });
 
 const updateAccoundDetails = asyncHandler(async (req, res) => {
@@ -374,6 +370,171 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, "Cover image updated successfully!"));
 });
 
+const getUserChannelProfile = asyncHandler(async (req, res) => {
+  const { username } = req.params;
+
+  if (!username?.trim()) {
+    throw new ApiError(400, "username is missing!");
+  }
+
+  const channel = await User.aggregate([
+    // Stage 1: Match the user based on username
+    {
+      $match: {
+        username: username?.toLowerCase(), // Convert input username to lowercase and find matching user
+      },
+    },
+
+    // Stage 2: Lookup subscribers (people who subscribed to this channel)
+    {
+      $lookup: {
+        from: "subscriptions", // Collection name where subscription data is stored
+        localField: "_id", // Current user's _id (channel id)
+        foreignField: "channel", // Match where channel field equals this user's _id
+        as: "subscribers", // Store result in 'subscribers' array
+      },
+    },
+
+    // Stage 3: Lookup channels that this user has subscribed to
+    {
+      $lookup: {
+        from: "subscriptions", // Same collection
+        localField: "_id", // Current user's _id
+        foreignField: "subscriber", // Match where subscriber field equals this user's _id
+        as: "subscribedTo", // Store result in 'subscribedTo' array
+      },
+    },
+
+    // Stage 4: Add computed fields
+    {
+      $addFields: {
+        // Count total subscribers
+        subscribersCount: {
+          $size: "$subscribers", // Get length of subscribers array
+        },
+
+        // Count how many channels this user has subscribed to
+        channelsSubscriberdToCount: {
+          $size: "$subscribedTo", // Get length of subscribedTo array
+        },
+
+        // Check if current logged-in user is subscribed to this channel
+        isSubscribed: {
+          $cond: {
+            if: {
+              $in: [
+                req.user?._id, // Current logged-in user's ID
+                "$subscribers.subscriber", // Array of subscriber IDs from subscribers list
+              ],
+            },
+            then: true, // If found, user is subscribed
+            else: false, // Otherwise, not subscribed
+          },
+        },
+      },
+    },
+
+    // Stage 5: Project only required fields
+    {
+      $project: {
+        fullName: 1, // Include full name
+        username: 1, // Include username
+        subscribersCount: 1, // Include subscribers count
+        channelsSubscriberdToCount: 1, // Include subscribed channels count
+        avatar: 1, // Include avatar image
+        coverImage: 1, // Include cover image
+        email: 1, // Include email
+      },
+    },
+  ]);
+
+  if (!channel?.length) {
+    throw new ApiError(404, "channel does not exists!");
+  }
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(200, channel[0], "User channel fetched successfully!")
+    );
+});
+
+const getWatchHistory = asyncHandler(async (req, res) => {
+  const user = await User.aggregate([
+    // 1. Match the logged-in user
+    {
+      $match: {
+        _id: new mongoose.Types.ObjectId(req.user._id),
+        // WHY:
+        // - MongoDB stores _id as ObjectId
+        // - req.user._id usually comes as string (from JWT/session)
+        // - So we convert string → ObjectId for exact match
+      },
+    },
+
+    // 2. Populate watchHistory (array of video IDs → actual video documents)
+    {
+      $lookup: {
+        from: "videos", // Target collection (videos)
+        localField: "watchHistory", // Field in User (array of video IDs)
+        foreignField: "_id", // Match with Video _id
+        as: "watchHistory", // Replace IDs with full video objects
+
+        // Nested pipeline for each video
+        pipeline: [
+          // 3. Populate owner of each video
+          {
+            $lookup: {
+              from: "users", // Owner is stored in users collection
+              localField: "owner", // Field in video (owner ID)
+              foreignField: "_id", // Match with user _id
+              as: "owner", // Result will be array
+
+              // Only fetch required owner fields
+              pipeline: [
+                {
+                  $project: {
+                    fullName: 1,
+                    username: 1,
+                    avatar: 1,
+                  },
+                  // WHY:
+                  // - Reduce payload size
+                  // - Improve performance
+                  // - Avoid exposing sensitive fields (email, password, etc.)
+                },
+              ],
+            },
+          },
+
+          // 4. Convert owner array → single object
+          {
+            $addFields: {
+              owner: {
+                $first: "$owner",
+              },
+            },
+            // WHY:
+            // - $lookup always returns an array
+            // - But each video has only ONE owner
+            // - So we extract the first element to simplify structure
+          },
+        ],
+      },
+    },
+  ]);
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        user[0].watchHistory,
+        "Watch history fetched successfully!"
+      )
+    );
+});
+
 export {
   registerUser,
   loginUser,
@@ -384,4 +545,6 @@ export {
   updateAccoundDetails,
   updateUserAvatar,
   updateUserCoverImage,
+  getUserChannelProfile,
+  getWatchHistory,
 };

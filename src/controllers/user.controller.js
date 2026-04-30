@@ -287,7 +287,11 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
 const getCurrentUser = asyncHandler(async (req, res) => {
   return res
     .status(200)
-    .json(200, req.user, "current user fetched successfully!");
+    .json(new ApiResponse(
+      200,
+      req.user,
+      "current user fetched successfully!"
+    ));
 });
 
 const updateAccoundDetails = asyncHandler(async (req, res) => {
@@ -297,7 +301,7 @@ const updateAccoundDetails = asyncHandler(async (req, res) => {
     throw new ApiError(400, "All fields are required!");
   }
 
-  const user = User.findByIdAndUpdate(
+  const user = await User.findByIdAndUpdate(
     req.user?._id,
     {
       $set: {
@@ -321,9 +325,9 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Avatar file is missing!");
   }
 
-  const avatar = await uplodaOnCloudinary(avatLocalPath);
+  const avatar = await uploadOnCloudinary(avatarLocalPath);
 
-  if (!avatar.url) {
+  if (!avatar?.url) {
     throw new ApiError(400, "Error while uploading on avatar!");
   }
 
@@ -338,10 +342,8 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
   ).select("-password");
 
   return res
-  .status(200)
-  .json(
-    new ApiResponse(200, "Avatar updated successfully!")
-  )
+    .status(200)
+    .json(new ApiResponse(200, user, "Avatar updated successfully!"));
 });
 
 const updateUserCoverImage = asyncHandler(async (req, res) => {
@@ -368,10 +370,8 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
   ).select("-password");
 
   return res
-  .status(200)
-  .json(
-    new ApiResponse(200, "Cover image updated successfully!")
-  )
+    .status(200)
+    .json(new ApiResponse(200, "Cover image updated successfully!"));
 });
 
 export {
@@ -383,5 +383,5 @@ export {
   getCurrentUser,
   updateAccoundDetails,
   updateUserAvatar,
-  updateUserCoverImage
+  updateUserCoverImage,
 };

@@ -4,6 +4,7 @@ import { User } from "../models/user.model.js";
 import { uplodaOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 
 const generateAccessAndRefreshToken = async (userId) => {
   try {
@@ -123,8 +124,12 @@ const loginUser = asyncHandler(async (req, res) => {
   const { email, username, password } = req.body;
 
   // username or email
-  if (!username && !email) {
-    throw new ApiError(400, "username or password is required!");
+  if (!(username || email)) {
+    throw new ApiError(400, "Username or email is required!");
+  }
+
+  if (!password) {
+    throw new ApiError(400, "Password is required!");
   }
 
   // if (!(username || email)) {
